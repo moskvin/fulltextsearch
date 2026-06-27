@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\FullTextSearch\AppInfo;
 
-
 use Closure;
 use OCA\FullTextSearch\Capabilities;
 use OCA\FullTextSearch\ConfigLexicon;
@@ -24,12 +23,10 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\FullTextSearch\IFullTextSearchManager;
 use OCP\IAppConfig;
 use OCP\INavigationManager;
-use OCP\IServerContainer;
 use OCP\IURLGenerator;
-use OCP\L10N\IFactory;
-use OCP\Server;
-use Symfony\Component\Routing\Exception\RouteNotFoundException;
+use OCP\L10N\IFactory as L10NFactory;
 use Psr\Container\ContainerInterface;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 use Throwable;
 
 if (file_exists($autoLoad = __DIR__ . '/../../vendor/autoload.php')) {
@@ -43,6 +40,10 @@ class Application extends App implements IBootstrap {
 
 	/**
 	 * Application constructor.
+	 *
+	 * Wichtig:
+	 * Diese Klasse wird von Nextcloud ohne Service-Argumente instanziiert.
+	 * Deshalb hier keine verpflichtenden Dependencies injizieren.
 	 *
 	 * @param array $params
 	 */
@@ -61,6 +62,7 @@ class Application extends App implements IBootstrap {
 		$this->registerServices($this->getContainer());
 	}
 
+
 	/**
 	 * @param IBootContext $context
 	 *
@@ -72,9 +74,11 @@ class Application extends App implements IBootstrap {
 
 
 	/**
-	 * Register Navigation Tab
+	 * Register services
+	 *
+	 * @param ContainerInterface $container
 	 */
-	protected function registerServices(ContainerInterface $container) {
+	protected function registerServices(ContainerInterface $container): void {
 		/** @var IFullTextSearchManager $fullTextSearchManager */
 		$fullTextSearchManager = $container->get(IFullTextSearchManager::class);
 
@@ -90,36 +94,49 @@ class Application extends App implements IBootstrap {
 
 	/**
 	 * Register Navigation Tab
+	 *
+	 * Dependencies werden über injectFn() aus boot() injiziert.
+	 *
+	 * @param IAppConfig $appConfig
+	 * @param INavigationManager $navigationManager
+	 * @param IURLGenerator $urlGen
+	 * @param L10NFactory $l10nFactory
 	 */
-	protected function registerNavigation(ContainerInterface $container) {
-		/** @var IAppConfig $appConfig */
-		$appConfig = $container->get(IAppConfig::class);
+	protected function registerNavigation(
+		IAppConfig $appConfig,
+		INavigationManager $navigationManager,
+		IURLGenerator $urlGen,
+		L10NFactory $l10nFactory
+	): void {
 		if (!$appConfig->getValueBool(self::APP_ID, ConfigLexicon::APP_NAVIGATION)) {
 			return;
 		}
 
 		try {
-			$container->get(INavigationManager::class)
-					  ->add(fn () => $this->fullTextSearchNavigation());
-		} catch (\Exception) {
+			$navigationManager->add(
+				fn () => $this->fullTextSearchNavigation($urlGen, $l10nFactory)
+			);
+		} catch (RouteNotFoundException $e) {
 		}
 	}
 
 
 	/**
+	 * @param IURLGenerator $urlGen
+	 * @param L10NFactory $l10nFactory
+	 *
 	 * @return array
 	 */
-	private function fullTextSearchNavigation(): array {
-		$urlGen = Server::get(IURLGenerator::class);
-
+	private function fullTextSearchNavigation(
+		IURLGenerator $urlGen,
+		L10NFactory $l10nFactory
+	): array {
 		return [
 			'id'    => self::APP_ID,
 			'order' => 5,
 			'href'  => $urlGen->linkToRoute(self::APP_ID . '.Navigation.navigate'),
 			'icon'  => $urlGen->imagePath(self::APP_ID, 'fulltextsearch.svg'),
-			'name'  => Server::get(IFactory::class)->get('fulltextsearch')->t('Search')
+			'name'  => $l10nFactory->get(self::APP_ID)->t('Search')
 		];
 	}
-
 }
-
